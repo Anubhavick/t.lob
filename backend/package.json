@@ -16,7 +16,11 @@
   "dependencies": {
     "dotenv": "^17.2.3",
     "openai": "latest",
-    "typescript": "^5.9.3"
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^5.9.3",
+    "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
     "@types/dotenv": "^6.1.1",
