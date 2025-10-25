@@ -8,23 +8,20 @@ const token = process.env["GITHUB_TOKEN"];
 const endpoint = "https://models.github.ai/inference";
 const model = "openai/gpt-5";
 
-async function detectProjectType(client: OpenAI, userPrompt: string): Promise<'react' | 'node' | 'none'> {
-  const detectionResponse = await client.chat.completions.create({
-    messages: [
-      { 
-        role: "system", 
-        content: "You are a project type detector. Analyze the user's request and respond with ONLY one word: 'react' if they want a React/frontend project, 'node' if they want a Node.js backend project, or 'none' if unclear. Be concise, respond with only the word."
-      },
-      { role: "user", content: userPrompt }
-    ],
-    model: model,
-    temperature: 0
-  });
-
-  const answer = detectionResponse.choices[0]?.message.content?.trim().toLowerCase() || 'none';
+// Simple keyword-based detection - NO API CALL
+function detectProjectType(userPrompt: string): 'react' | 'node' | 'none' {
+  const lowerPrompt = userPrompt.toLowerCase();
   
-  if (answer.includes('react')) return 'react';
-  if (answer.includes('node')) return 'node';
+  if (lowerPrompt.includes('react') || lowerPrompt.includes('frontend') || 
+      lowerPrompt.includes('ui') || lowerPrompt.includes('component')) {
+    return 'react';
+  }
+  
+  if (lowerPrompt.includes('node') || lowerPrompt.includes('backend') || 
+      lowerPrompt.includes('server') || lowerPrompt.includes('api')) {
+    return 'node';
+  }
+  
   return 'none';
 }
 
@@ -34,8 +31,8 @@ export async function main() {
   const systemPrompt = getSystemPrompt();
   const userPrompt = "make a todo app in react";
   
-  
-  const projectType = await detectProjectType(client, userPrompt);
+  // Detect project type using keywords (NO API call - saves rate limit)
+  const projectType = detectProjectType(userPrompt);
   console.log(`Detected project type: ${projectType}`);
 
   let messages: Array<{ role: "system" | "user"; content: string }> = [
@@ -46,20 +43,19 @@ export async function main() {
   if (projectType === 'react') {
     messages.push({
       role: "user",
-      content: `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`
+      content: `You have a Vite + React + TypeScript project with Tailwind CSS and Lucide icons already set up. Base files exist: package.json, index.html, vite.config.ts, tailwind.config.js, src/App.tsx, src/main.tsx, src/index.css\n\nNow: ${userPrompt}`
     });
   } else if (projectType === 'node') {
     messages.push({
       role: "user",
-      content: `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${nodeBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`
+      content: `You have a Node.js project with package.json and index.js already set up.\n\nNow: ${userPrompt}`
+    });
+  } else {
+    messages.push({
+      role: "user",
+      content: userPrompt
     });
   }
-
-
-  messages.push({
-    role: "user",
-    content: userPrompt
-  });
 
   const response = await client.chat.completions.create({
     messages: messages,
@@ -68,9 +64,15 @@ export async function main() {
 
   console.log('\n=== AI Response ===\n');
   console.log(response.choices[0]?.message.content);
+  
+  return {
+    projectType,
+    prompts: [systemPrompt, messages[1]?.content || userPrompt],
+    uiPrompts: projectType === 'react' ? [reactBasePrompt] : projectType === 'node' ? [nodeBasePrompt] : [],
+    response: response.choices[0]?.message.content
+  };
 }
 
 main().catch((err) => {
   console.error("The sample encountered an error:", err);
 });
-
