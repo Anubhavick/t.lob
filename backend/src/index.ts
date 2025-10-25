@@ -1,78 +1,101 @@
 import 'dotenv/config';
-import OpenAI from "openai";
+import express from 'express';
+import OpenAI from 'openai';
 import { getSystemPrompt } from './prompts.js';
 import { basePrompt as reactBasePrompt } from './defaults/react.js';
 import { basePrompt as nodeBasePrompt } from './defaults/node.js';
+import cors from 'cors';
 
 const token = process.env["GITHUB_TOKEN"];
 const endpoint = "https://models.github.ai/inference";
-const model = "openai/gpt-5";
+const model = "gpt-4o";
 
-// Simple keyword-based detection - NO API CALL
-function detectProjectType(userPrompt: string): 'react' | 'node' | 'none' {
-  const lowerPrompt = userPrompt.toLowerCase();
-  
-  if (lowerPrompt.includes('react') || lowerPrompt.includes('frontend') || 
-      lowerPrompt.includes('ui') || lowerPrompt.includes('component')) {
-    return 'react';
-  }
-  
-  if (lowerPrompt.includes('node') || lowerPrompt.includes('backend') || 
-      lowerPrompt.includes('server') || lowerPrompt.includes('api')) {
-    return 'node';
-  }
-  
-  return 'none';
-}
+const client = new OpenAI({ baseURL: endpoint, apiKey: token });
+const app = express();
 
-export async function main() {
-  const client = new OpenAI({ baseURL: endpoint, apiKey: token });
+app.use(cors());
+app.use(express.json());
 
-  const systemPrompt = getSystemPrompt();
-  const userPrompt = "make a todo app in react";
-  
-  // Detect project type using keywords (NO API call - saves rate limit)
-  const projectType = detectProjectType(userPrompt);
-  console.log(`Detected project type: ${projectType}`);
+// Template endpoint - detects project type (react or node)
+app.post("/template", async (req, res) => {
+    try {
+        const prompt = req.body.prompt;
+        
+        const response = await client.chat.completions.create({
+            model: model,
+            max_tokens: 200,
+            messages: [
+                {
+                    role: 'system',
+                    content: "Return either node or react based on what do you think this project should be. Only return a single word either 'node' or 'react'. Do not return anything extra"
+                },
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ]
+        });
 
-  let messages: Array<{ role: "system" | "user"; content: string }> = [
-    { role: "system", content: systemPrompt }
-  ];
+        const answer = response.choices[0]?.message.content?.trim().toLowerCase() || '';
+        
+        if (answer.includes("react")) {
+            res.json({
+                prompts: [
+                    getSystemPrompt(),
+                    `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`
+                ],
+                uiPrompts: [reactBasePrompt]
+            });
+            return;
+        }
 
-  
-  if (projectType === 'react') {
-    messages.push({
-      role: "user",
-      content: `You have a Vite + React + TypeScript project with Tailwind CSS and Lucide icons already set up. Base files exist: package.json, index.html, vite.config.ts, tailwind.config.js, src/App.tsx, src/main.tsx, src/index.css\n\nNow: ${userPrompt}`
-    });
-  } else if (projectType === 'node') {
-    messages.push({
-      role: "user",
-      content: `You have a Node.js project with package.json and index.js already set up.\n\nNow: ${userPrompt}`
-    });
-  } else {
-    messages.push({
-      role: "user",
-      content: userPrompt
-    });
-  }
+        if (answer.includes("node")) {
+            res.json({
+                prompts: [
+                    getSystemPrompt(),
+                    `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${nodeBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`
+                ],
+                uiPrompts: [nodeBasePrompt]
+            });
+            return;
+        }
 
-  const response = await client.chat.completions.create({
-    messages: messages,
-    model: model
-  });
+        res.status(403).json({ message: "You cant access this" });
+    } catch (error: any) {
+        console.error("Template error:", error);
+        res.status(500).json({ 
+            message: "Error processing template request",
+            error: error.message 
+        });
+    }
+});
 
-  console.log('\n=== AI Response ===\n');
-  console.log(response.choices[0]?.message.content);
-  
-  return {
-    projectType,
-    prompts: [systemPrompt, messages[1]?.content || userPrompt],
-    uiPrompts: projectType === 'react' ? [reactBasePrompt] : projectType === 'node' ? [nodeBasePrompt] : [],
-    response: response.choices[0]?.message.content
-  };
-}
+// Chat endpoint - handles conversation with AI
+app.post("/chat", async (req, res) => {
+    try {
+        const messages = req.body.messages;
+        
+        const response = await client.chat.completions.create({
+            messages: messages,
+            model: model,
+            max_tokens: 8000
+        });
 
-main().catch((err) => {
-  console.error("The sample encountered an error:", err);
+        console.log(response);
+
+        res.json({
+            response: response.choices[0]?.message.content
+        });
+    } catch (error: any) {
+        console.error("Chat error:", error);
+        res.status(500).json({ 
+            message: "Error processing chat request",
+            error: error.message 
+        });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
