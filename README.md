@@ -4,7 +4,7 @@
 
 ## Overview
 
-T.lob is an intelligent web development platform that leverages cutting-edge AI models to generate complete web applications from simple text prompts. Whether you're building a React frontend, Node.js backend, or a full-stack application, T.lob handles the entire development workflow - from project scaffolding to code generation.
+T.lob is an intelligent web development platform that leverages cutting-edge AI models to generate complete web applications from simple text prompts. Whether you're building a React frontend, Node.js backend, or a full-stack application, T.lob handles the entire development workflow - from project scaffolding to code generation
 
 ## Key Features
 
